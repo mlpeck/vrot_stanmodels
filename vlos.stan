@@ -40,12 +40,15 @@ parameters {
 }
 
 transformed parameters {
-  vector<lower=0.>[N] r;
-  
+  vector[N] dx = x - x_c;
+  vector[N] dy = y - y_c;
+  vector[N] r;
+
   for (i in 1:N) {
-    r[i] = sqrt((-(x[i] - x_c) * sin(phi) + (y[i] - y_c) * cos(phi))^2 +
-                (((x[i] - x_c) * cos(phi) + (y[i] - y_c) * sin(phi))/sqrt(1-si^2))^2);
+    r[i] = sqrt((-dx[i] * sin(phi) + dy[i] * cos(phi))^2 +
+                ((dx[i] * cos(phi) + dy[i] * sin(phi))/sqrt(1-si^2))^2);
   }
+  
 }
 
 model {
@@ -60,8 +63,8 @@ model {
   
   v ~ normal(v_los, dv);
   v_los ~ normal(v_sys + si * (
-                  sump(c_rot, r, order) .* (-(x - x_c) * sin(phi) + (y - y_c) * cos(phi))  + 
-                  sump(c_exp, r, order) .* (-(x - x_c) * cos(phi) - (y - y_c) * sin(phi)) / sqrt(1-si^2)),
+                  sump(c_rot, r, order) .* (-dx * sin(phi) + dy * cos(phi))  + 
+                  sump(c_exp, r, order) .* (-dx * cos(phi) - dy * sin(phi)) / sqrt(1-si^2)),
                   sigma_los);
 }
 
@@ -75,8 +78,8 @@ generated quantities {
   v_rot = fabs(r .* sump(c_rot, r, order));
   v_exp = r .* sump(c_exp, r, order);
   v_model = v_sys + si * (
-                      sump(c_rot, r, order) .* (-(x - x_c) * sin(phi) + (y - y_c) * cos(phi))  + 
-                      sump(c_exp, r, order) .* (-(x - x_c) * cos(phi) - (y - y_c) * sin(phi)) / sqrt(1-si^2));
+                      sump(c_rot, r, order) .* (-dx * sin(phi) + dy * cos(phi))  + 
+                      sump(c_exp, r, order) .* (-dx * cos(phi) - dy * sin(phi)) / sqrt(1-si^2));
   v_res = v - v_model;
   vrot_post = fabs(r_post .* sump(c_rot, r_post, order));
 }
