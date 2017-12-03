@@ -23,6 +23,9 @@ data {
   real<lower=0.> sd_phi0;
   real si0;
   real<lower=0.> sd_si0;
+  real<lower=0.> sd_kc0;
+  real<lower=0.> r_norm;
+  real<lower=0.> v_norm;
   int<lower=1> N_r; //number of points to fill in
   vector[N_r] r_post;
 }
@@ -52,10 +55,10 @@ transformed parameters {
 model {
   phi ~ normal(phi0, sd_phi0);
   si ~ normal(si0, sd_si0);
-  x_c ~ normal(0, 1);
-  y_c ~ normal(0, 1);
-  v_sys ~ normal(0, 5);
-  sigma_los ~ normal(0, 1);
+  x_c ~ normal(0, sd_kc0/r_norm);
+  y_c ~ normal(0, sd_kc0/r_norm);
+  v_sys ~ normal(0, 150./v_norm);
+  sigma_los ~ normal(0, 50./v_norm);
   c_rot ~ normal(0, 5);                                                                        
   c_exp ~ normal(0, 5);
   
