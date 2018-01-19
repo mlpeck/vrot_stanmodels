@@ -32,7 +32,7 @@ data {
 
 parameters {
   real phi;
-  real<lower=0., upper=1.> si;  // sine disk inclination
+  real<lower=0., upper=1.> sin_i;  // sine disk inclination
   real x_c;  //kinematic centers
   real y_c;
   real v_sys;     //system velocity offset (should be small)
@@ -43,18 +43,31 @@ parameters {
 }
 
 transformed parameters {
-  vector[N] dx = x - x_c;
-  vector[N] dy = y - y_c;
-  vector[N] yhat = -dx * sin(phi) + dy * cos(phi);
-  vector[N] xhat = -(dx * cos(phi) + dy * sin(phi))/sqrt(1-si^2);
+  vector[N] xc = x - x_c;
+  vector[N] yc = y - y_c;
+  real sin_phi = sin(phi);
+  real cos_phi = cos(phi);
+  matrix[N, 2] X;
+  matrix[N, 2] Xhat;
+  matrix[2, 2] Rot;
+  matrix[2, 2] Stretch;
   vector[N] r;
-
+  vector[N] xhat;
+  vector[N] yhat;
+  
+  X = append_col(xc, yc);
+  Rot = [ [-cos_phi, -sin_phi],
+          [-sin_phi, cos_phi]];
+  Stretch = diag_matrix([1./sqrt(1.-sin_i^2), 1.]');
+  Xhat = X * Rot * Stretch;
+  xhat = Xhat[ : , 1];
+  yhat = Xhat[ : , 2];
   r = sqrt(yhat .* yhat + xhat .* xhat);
 }
 
 model {
   phi ~ normal(phi0, sd_phi0);
-  si ~ normal(si0, sd_si0);
+  sin_i ~ normal(si0, sd_si0);
   x_c ~ normal(0, sd_kc0/r_norm);
   y_c ~ normal(0, sd_kc0/r_norm);
   v_sys ~ normal(0, 150./v_norm);
@@ -63,7 +76,7 @@ model {
   c_exp ~ normal(0, 5);
   
   v ~ normal(v_los, dv);
-  v_los ~ normal(v_sys + si * (
+  v_los ~ normal(v_sys + sin_i * (
                   sump(c_rot, r, order) .* yhat + sump(c_exp, r, order) .* xhat),
                   sigma_los);
 }
@@ -78,7 +91,7 @@ generated quantities {
   
   v_rot = fabs(r .* sump(c_rot, r, order));
   v_exp = r .* sump(c_exp, r, order);
-  v_model = v_sys + si * (
+  v_model = v_sys + sin_i * (
                       sump(c_rot, r, order) .* yhat + 
                       sump(c_exp, r, order) .* xhat);
   v_res = v - v_model;
