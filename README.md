@@ -1,4 +1,4 @@
-This site contains code and data for modeling rotation curves of disk galaxies with spectroscopic data in [SDSS-IV MaNGA](http://www.sdss.org/dr14/manga/) as derived for example in [Teuben 2002](https://ui.adsabs.harvard.edu/#abs/2002ASPC..275..217T/abstract). All of the R and Stan code and datasets required to recreate my workflow is included. A sample data set with galaxy spectra and a Stan model fit is provided on my [Dropbox account](https://www.dropbox.com/s/tousr1abr1j27r6/8333-6102.rda?dl=0).
+This site contains code and data for modeling rotation curves as derived for example in [Teuben 2002](https://ui.adsabs.harvard.edu/#abs/2002ASPC..275..217T/abstract) for disk galaxies with spectroscopic data in [SDSS-IV MaNGA](http://www.sdss.org/dr14/manga/) . All of the R and Stan code and datasets required to recreate my workflow is included. A sample data set with galaxy spectra and a Stan model fit is provided on my [Dropbox account](https://www.dropbox.com/s/tousr1abr1j27r6/8333-6102.rda?dl=0).
 
 This software depends on a number of R packages. A possibly incomplete list includes:
 
