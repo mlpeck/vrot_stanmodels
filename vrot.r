@@ -1,16 +1,130 @@
+## get redshift offsets from a data cube or stacked rss file
+
+regrid <- function(lambda.out, lib) {
+    lambda.in <- lib$lambda
+    nc <- ncol(lib)
+    lib.out <- matrix(NA, length(lambda.out), nc)
+    lib.out[,1] <- lambda.out
+    for (i in 2:nc) {
+        lib.out[,i] <- approx(lambda.in, lib[,i], xout=lambda.out)$y
+    }
+    colnames(lib.out) <- colnames(lib)
+    data.frame(lib.out)
+}
+
+
+getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, ints=1e-4) {
+    dims <- dim(gdat$flux)
+    nr <- dims[1]
+    nc <- dims[2]
+    dz <- matrix(NA, nr, nc)
+    dz.err <- matrix(NA, nr, nc)
+    z <- gdat$meta$z
+    lambda <- gdat$lambda
+    fmla <- as.formula(paste("f ~", paste(names(lib)[-1], collapse="+")))
+    fn <- function(x) {
+        lambda.out <- lambda/(1+z+x)
+        lib.out <- regrid(lambda.out, lib)
+        lfit <- lm(fmla, data=lib.out, weights=iv)
+        deviance(lfit)
+    }
+    fn_v <- Vectorize(fn)
+    z_search <- seq(-dzlim, dzlim, by=ints)
+
+    for (i in 1:nr) {
+        for (j in 1:nc) {
+            if (is.na(gdat$snr[i,j]) || gdat$snr[i,j]<=snrthresh) next
+            f <- gdat$flux[i, j, ]
+            if (length(which(!is.na(f))) < nlthresh) next
+            iv <- gdat$ivar[i, j, ]
+		    dev_grid <- fn_v(z_search)
+		    z0 <- z_search[which.min(dev_grid)]
+		    bestz <- Rsolnp::solnp(pars=z0, fun=fn, LB=z0-ints, UB=z0+ints, 
+                            control=list(trace=0))
+            dz[i,j] <- bestz$pars
+            dz.err[i,j] <- 1/sqrt(bestz$hessian)
+        }
+    }
+    list(dz=dz, dz.err=dz.err)
+}
+
+## peculiar velocity
+
+vrel <- function(z, zbar) {
+  299792.458*(z-zbar)/(1+zbar)
+}
+
+## simple 2D spatial interpolation
+
+fillpoly <- function(ra, dec, zvals, dxy=0.5) {
+    ny <- max(round((max(dec)-min(dec))*3600/dxy), 100)
+    nx <- ny
+    allok <- complete.cases(ra, dec, zvals)
+    zsurf <- akima::interp(x=ra[allok], y=dec[allok], z=zvals[allok], nx=nx, ny=ny)
+    list(ra=zsurf$x, dec=zsurf$y, z=zsurf$z)
+}
+
+## an image function using ggplot2
+    
+ggimage <- function(zmat, x=NULL, y=NULL, col=viridis::viridis(256),
+                    xlab=NULL, ylab=NULL, legend=NULL, title=NULL,
+                    xrev=FALSE, yrev=FALSE, asp=1,
+                    addContour=FALSE, binwidth=NULL
+                   ) {
+    require(ggplot2)
+    if (is.null(x)) x <- 1:nrow(zmat)
+    if (is.null(y)) y <- 1:ncol(zmat)
+    if (!is.null(dim(x))) {
+      x <- colMeans(x)
+      y <- rowMeans(y)
+    }
+    xy <- expand.grid(x,y)
+    df <- data.frame(cbind(xy, as.vector(zmat)))
+    names(df) <- c("x","y","z")
+    g1 <- ggplot(df, aes(x=x, y=y, z=z)) + 
+        geom_raster(aes(fill=z)) + 
+        scale_fill_gradientn(colors=col, na.value="#FFFFFF00") +
+        coord_fixed(ratio = asp)
+    if (addContour) {
+        if (!is.null(binwidth)) {
+            g1 <- g1 + geom_contour(binwidth=binwidth, na.rm=TRUE)
+        } else {
+            g1 <- g1 + geom_contour(na.rm=TRUE)
+        }
+    }
+    if (xrev) g1 <- g1 + scale_x_reverse()
+    if (yrev) g1 <- g1 + scale_y_reverse()
+    if (!is.null(xlab)) {
+        g1 <- g1 + xlab(xlab)
+    }
+    if (!is.null(ylab)) {
+        g1 <- g1 + ylab(ylab)
+    }
+    if (!is.null(legend)) {
+        g1 <- g1 + labs(fill=legend)
+    }
+    if (!is.null(title)) {
+        g1 <- g1 + ggtitle(title)
+    }
+    g1
+}
+
+rainbow <- c("blue", "cyan", "green", "yellow", "red")
+
+## disk galaxy rotation curve model
+
 vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
                       ci.guess=0.7, sd.ci.guess=0.1,
                       sd.kc0=0.5,
                       order=3, N_r=100,
                       r_eff=1, remax=1.5, v_norm=100, PLOTS=TRUE,
-                      stanmodel="vrot.stan", stanmodeldir="~/spmcode", 
+                      stanmodel="vrot.stan", stanmodeldir=".", 
                       seed=220755, iter=2000, warmup=1000,
                       chains=4, cores=4,
                       control=list(adapt_delta=0.975, max_treedepth=15)) {
   require(rstan)
   require(ggplot2)
-  require(zernike)
-  v <- cosmo::vrel(dz.stack$dz+gdat.stack$meta$z, gdat.stack$meta$z)
+  v <- vrel(dz.stack$dz+gdat.stack$meta$z, gdat.stack$meta$z)
   v_sample <- v[!is.na(v)]
   dv <- (dz.stack$dz.err/dz.stack$dz)*v
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v, dv=dv)
@@ -19,8 +133,6 @@ vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   if (rmax %% 2 != 0) rmax = rmax+1
   r_norm <- r_eff*remax
   r_post <- seq(0, 0.99, length=N_r)*rmax/r_norm
-  knots <- seq(0, rmax/r_norm, length=4)
-  n_knots <- length(knots)
   
   vlos_data <- list(order=order, N=nrow(df), x=df$x/r_norm, y=df$y/r_norm, 
                     v=df$v/v_norm, dv=df$dv/v_norm, 
@@ -54,16 +166,16 @@ vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   i <- 1
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v)
   graphs[[i]] <- ggplot(df) + geom_point(aes(x=x, y=y, color=v), size=7) +
-                              scale_colour_gradientn(colors=c("blue","cyan","green","yellow","red"), na.value="gray95") +
+                              scale_colour_gradientn(colors=rainbow, na.value="gray95") +
                               coord_fixed(ratio=1) +
                               ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": observed fiber velocities"))
   i <- i+1                              
-  graphs[[i]] <- ggimage(vf_obs$z, vf_obs$ra, vf_obs$dec, col=rev(rygcb(400)), asp=1/cos(pi*gdat.stack$meta$dec/180), addContour=T) + 
+  graphs[[i]] <- ggimage(vf_obs$z, vf_obs$ra, vf_obs$dec, col=rainbow, asp=1/cos(pi*gdat.stack$meta$dec/180), addContour=T) + 
                           xlim(rev(range(gdat.stack$ra.f))) + ylim(range(gdat.stack$dec.f)) +
                           xlab(expression(alpha)) + ylab(expression(delta)) +
                           ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": observed velocity field"))
   i <- i+1
-  graphs[[i]] <- ggimage(vf_model$z, vf_model$ra, vf_model$dec, col=rev(rygcb(400)), asp=1/cos(pi*gdat.stack$meta$dec/180), addContour=T) + 
+  graphs[[i]] <- ggimage(vf_model$z, vf_model$ra, vf_model$dec, col=rainbow, asp=1/cos(pi*gdat.stack$meta$dec/180), addContour=T) + 
                           xlim(rev(range(gdat.stack$ra.f))) + ylim(range(gdat.stack$dec.f)) +
                           xlab(expression(alpha)) + ylab(expression(delta)) +
                           ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": model velocity field"))
@@ -114,21 +226,22 @@ vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
        graphs=graphs
   )
 }
+
+## disk galaxy rotation curve model -- gaussian process version
   
 vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
                       ci.guess=0.7, sd.ci.guess=0.1,
                       sd.kc0=0.5,
                       order=3, N_xy=25^2,
                       r_eff=1, remax=1.5, v_norm=100, PLOTS=TRUE,
-                      stanmodel="vrot_gp.stan", stanmodeldir="~/spmcode", 
+                      stanmodel="vrot_gp.stan", stanmodeldir=".", 
                       seed=220755, iter=500, warmup=250,
                       chains=4, cores=4,
                       control=list(adapt_delta=0.8, max_treedepth=10)) {
   require(rstan)
   require(ggplot2)
   require(akima)
-  require(zernike)
-  v <- cosmo::vrel(dz.stack$dz+gdat.stack$meta$z, gdat.stack$meta$z)
+  v <- vrel(dz.stack$dz+gdat.stack$meta$z, gdat.stack$meta$z)
   v_sample <- v[!is.na(v)]
   dv <- (dz.stack$dz.err/dz.stack$dz)*v
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v, dv=dv)
@@ -164,7 +277,7 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   graphs <- list()
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v)
   graphs[[1]] <- ggplot(df) + geom_point(aes(x=x, y=y, color=v), size=7) +
-                              scale_colour_gradientn(colors=c("blue","cyan","green","yellow","red"), na.value="gray95") +
+                              scale_colour_gradientn(colors=rainbow, na.value="gray95") +
                               coord_fixed(ratio=1) +
                               ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": observed fiber velocities"))
   v_pred <- colMeans(post$v_pred)
@@ -174,7 +287,7 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   y <- y_pred*r_norm
   rho <- c(0, rho)*remax
   df <- akima::interp(x=x, y=y, z=v_pred, nx=200, ny=200)
-  graphs[[2]] <- ggimage(df$z, df$x, df$y, col=rev(rygcb(400)), xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
+  graphs[[2]] <- ggimage(df$z, df$x, df$y, col=rainbow, xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=v_res, nx=200, ny=200)
   graphs[[3]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="v_res", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=sd_v_pred, nx=200, ny=200)
