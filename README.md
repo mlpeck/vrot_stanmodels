@@ -44,7 +44,7 @@ If you downloaded the sample data set loading it will load values of `gdat.stack
 There are two Stan models included here for modeling galaxies with moderate disk inclinations. The first, named `vrot.stan` uses a low order polynomial for the rotation velocity. `vrot_gp.stan` is a semi-parametric model that uses a gaussian process regression to model the velocity field. The code for the first model is relatively mature, which doesn't mean the output isn't nonsense of course. The latter is still experimental and is *much* more computationally intensive. To try it a minimal call is:
 
 ```R
-vrmodel <- vrot(gdat.stack, dz.stack, phi.guess, ci.guess=ci.guess, r_eff= r.eff)
+vrmodel <- vrot_gp(gdat.stack, dz.stack, phi.guess, ci.guess=ci.guess, r_eff= r.eff)
 ```
 
 ## Acknowledgements
