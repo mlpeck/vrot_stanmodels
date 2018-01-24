@@ -12,7 +12,7 @@ This software depends on a number of R packages. A possibly incomplete list incl
 
 Several of these packages also have a number of dependencies. These should be downloaded and installed automatically provided you have an active internet connection. Windows users will also need [Rtools](http://cran.us.r-project.org/bin/windows/Rtools/), which includes a collection of tools for building R packages including mingw compilers. Linux users need the gcc compiler suite. In Linux it's generally easiest to build packages from source, although R itself and possibly R packages may be available in binary form from your distribution's code repositories.
 
-These models are designed to be used on logarithmically sampled RSS files from [SDSS-IV MaNGA](http://www.sdss.org/dr14/manga/manga-data/data-access/). With small modifications they could also be applied to the data cubes, but since no attempt is made to model the spatial covariance between spaxels the results might be misleading and in particular posterior uncertainties are likely to be too optimistic.
+These models are designed to be used on logarithmically sampled RSS files from [SDSS-IV MaNGA](http://www.sdss.org/dr14/manga/manga-data/data-access/). With small modifications they could also be applied to the data cubes. The simplest model included here makes no attempt to model the spatial covariance between spaxels; the results might therefore be misleading and in particular posterior uncertainties are likely to be too optimistic. The Gaussian Process regression model implemented in `vrot_gp.stan` does explicitly model spatial covariance, but is likely too computationally expensive for practical use.
 
 ## Getting Started
 
@@ -47,7 +47,9 @@ There are two Stan models included here for modeling galaxies with moderate disk
 vrmodel <- vrot(gdat.stack, dz.stack, phi.guess, ci.guess=ci.guess, r_eff= r.eff)
 ```
 
-## Boilerplate
+## Acknowledgements
+
+The Stan code for Gaussian Process regression was largely adapted from tutorial materials prepared by [Rob Trangucci](https://github.com/stan-dev/stancon_talks/tree/master/2017/Contributed-Talks/08_trangucci) and [Michael Betancourt](https://betanalpha.github.io/assets/case_studies/gp_part1/part1.html). The method for establishing a principled prior for the GP length scale parameter was taken directly from the [latter](https://betanalpha.github.io/assets/case_studies/gp_part3/part3.html).
 
 [SDSS acknowledgement](http://www.sdss.org/collaboration/citing-sdss/)
 
