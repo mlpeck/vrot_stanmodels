@@ -72,8 +72,8 @@ model {
   y_c ~ normal(0, sd_kc0/r_norm);
   v_sys ~ normal(0, 150./v_norm);
   sigma_los ~ normal(0, 50./v_norm);
-  c_rot ~ normal(0, 5);                                                                        
-  c_exp ~ normal(0, 5);
+  c_rot ~ normal(0, 1000./v_norm);                                                                        
+  c_exp ~ normal(0, 1000./v_norm);
   
   v ~ normal(v_los, dv);
   v_los ~ normal(v_sys + sin_i * (
