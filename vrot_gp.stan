@@ -1,14 +1,13 @@
 functions {
-  vector sump(vector c, vector r, int order) {
+  matrix poly(vector r, int order) {
     int N = num_elements(r);
-    vector[N] s;
-    for (n in 1:N) {
-      s[n] = c[1];
-      for (i in 2:order) {
-        s[n] = s[n] + c[i]*r[n]^(i-1);
+    matrix[N, order] P;
+    for (i in 1:order) {
+      for (n in 1:N) {
+        P[n, i] = r[n]^(i-1);
       }
     }
-    return s;
+    return P;
   }
 
   vector gp_pred_rng(row_vector[] xy_pred,
@@ -136,6 +135,7 @@ transformed parameters {
   vector[N] xhat;
   vector[N] yhat;
   row_vector[2] xyhat[N];
+  matrix[N, order] P;
   
   X = append_col(xc, yc);
   Rot = [ [-cos_phi, -sin_phi],
@@ -145,6 +145,7 @@ transformed parameters {
   xhat = Xhat[ : , 1];
   yhat = Xhat[ : , 2];
   r = sqrt(xhat .* xhat + yhat .* yhat);
+  P = poly(r, order);
   
   xyhat[:, 1] = to_array_1d(xhat);
   xyhat[:, 2] = to_array_1d(yhat);
@@ -175,7 +176,7 @@ model {
     cov[n, n] = cov[n, n] + square(sigma_los);
   }
   L_cov = cholesky_decompose(cov);
-  v_los ~ multi_normal_cholesky(v_sys + sin_i * sump(c_r, r, order) .* yhat, L_cov);
+  v_los ~ multi_normal_cholesky(v_sys + sin_i * (P * c_r) .* yhat, L_cov);
 }
 generated quantities {
   vector[N] v_rot;
@@ -184,9 +185,9 @@ generated quantities {
   vector[N_r+1] vrot_pred;
   vector[N_r+1] vexp_pred;
   
-  v_rot = fabs(r .* sump(c_r, r, order));
-  v_res = gp_pred_rng(xy_pred, v_los-v_sys-sin_i*sump(c_r, r, order) .* yhat, xyhat, alpha, rho, sigma_los);
-  v_pred = (v_res + sin_i * sump(c_r, r_pred, order) .* y_pred) *v_norm/sin_i;
+  v_rot = fabs(r .* (P * c_r));
+  v_res = gp_pred_rng(xy_pred, v_los-v_sys-sin_i* (P * c_r) .* yhat, xyhat, alpha, rho, sigma_los);
+  v_pred = (v_res + sin_i * (poly(r_pred, order) * c_r) .* y_pred) *v_norm/sin_i;
   v_res = v_res * v_norm/sin_i;
   vrot_pred[1] = 0.;
   vexp_pred[1] = 0.;
