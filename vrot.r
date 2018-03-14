@@ -269,38 +269,48 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   inits <- function(chain_id) {
     p <- phi.guess*pi/180
     ci <- ci.guess
-    list(phi=p, ci=ci, x_c=0., y_c=0., v_sys=0.)
+    list(phi=p, cos_i=ci, x_c=0., y_c=0., v_sys=0.)
   }
   stanfit <- stan(file=file.path(stanmodeldir, stanmodel), data=vlos_data, init=inits, 
                   seed=seed, iter=iter, warmup=warmup, control=control, chains=chains, cores=cores)
   post <- extract(stanfit)
   graphs <- list()
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v)
-  graphs[[1]] <- ggplot(df) + geom_point(aes(x=x, y=y, color=v), size=7) +
-                              scale_colour_gradientn(colors=rainbow, na.value="gray95") +
+  g <- 1
+  graphs[[g]] <- ggplot(df) + geom_point(aes(x=x, y=y, color=v), size=7) +
+                              scale_colour_gradientn(colors=c("blue","cyan","green","yellow","red"), na.value="gray95") +
                               coord_fixed(ratio=1) +
                               ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": observed fiber velocities"))
   v_pred <- colMeans(post$v_pred)
   sd_v_pred <- apply(post$v_pred, 2, sd)
+  v_model <- colMeans(post$v_model)
   v_res <- colMeans(post$v_res)
   x <- x_pred*r_norm
   y <- y_pred*r_norm
   rho <- c(0, rho)*remax
   df <- akima::interp(x=x, y=y, z=v_pred, nx=200, ny=200)
-  graphs[[2]] <- ggimage(df$z, df$x, df$y, col=rainbow, xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
+  g <- g+1
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rev(rygcb(400)), xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
+  df <- akima::interp(x=x, y=y, z=v_model, nx=200, ny=200)
+  g <- g+1
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rev(rygcb(400)), xlab="x", ylab="y", legend="v_model", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=v_res, nx=200, ny=200)
-  graphs[[3]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="v_res", addContour=TRUE)
+  g <- g+1
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="v_res", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=sd_v_pred, nx=200, ny=200)
-  graphs[[4]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="sd_v_pred", addContour=TRUE)
+  g <- g+1
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="sd_v_pred", addContour=TRUE)
   vrot_pred <- post$vrot_pred
   vexp_pred <- post$vexp_pred
   v_r_q <- data.frame(cbind(rho, t(apply(vrot_pred, 2, quantile, probs=c(.025, 0.5, 0.975)))))
   names(v_r_q) <- c("rho", "vr_025", "vr_500", "vr_975")
-  graphs[[5]] <- ggplot(v_r_q) + geom_line(aes(x=rho, y= vr_500)) + geom_ribbon(aes(x=rho, ymin=vr_025, ymax=vr_975), alpha=0.5) +
+  g <- g+1
+  graphs[[g]] <- ggplot(v_r_q) + geom_line(aes(x=rho, y= vr_500)) + geom_ribbon(aes(x=rho, ymin=vr_025, ymax=vr_975), alpha=0.5) +
                   xlab(expression(r/r[eff]))+ylab(expression(V[rot]))
   v_e_q <- data.frame(cbind(rho, t(apply(vexp_pred, 2, quantile, probs=c(.025, 0.5, 0.975)))))
   names(v_e_q) <- c("rho", "ve_025", "ve_500", "ve_975")
-  graphs[[6]] <- ggplot(v_e_q) + geom_line(aes(x=rho, y= ve_500)) + geom_ribbon(aes(x=rho, ymin=ve_025, ymax=ve_975), alpha=0.5) +
+  g <- g+1
+  graphs[[g]] <- ggplot(v_e_q) + geom_line(aes(x=rho, y= ve_500)) + geom_ribbon(aes(x=rho, ymin=ve_025, ymax=ve_975), alpha=0.5) +
                   xlab(expression(r/r[eff]))+ylab(expression(V[exp]))
 
   r_q <- apply(post$r*remax, 2, quantile, probs=c(0.025, 0.5, 0.975))
@@ -310,12 +320,19 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   df_v <- data.frame(cbind(t(r_q), t(v_r_q)))
   df <- data.frame(r=as.vector(abs(post$r))*remax, v_rot=as.vector(post$v_rot)*v_norm)
 
-  graphs[[7]] <- ggplot(df_v) + geom_point(aes(x=r_50., y=v_rot_50.)) +
+  g <- g+1
+  graphs[[g]] <- ggplot(df_v) + geom_point(aes(x=r_50., y=v_rot_50.)) +
           geom_errorbar(aes(x=r_50., ymin=v_rot_2.5., ymax=v_rot_97.5.)) +
           geom_errorbarh(aes(x=r_50., y=v_rot_50., xmin=r_2.5., xmax=r_97.5.)) +
           stat_density_2d(aes(x=r, y=v_rot, fill=..level..), data=df, geom="polygon", alpha=0.5, show.legend=FALSE) + 
           ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": joint distribution of r, v_rot")) +
           xlab(expression(r/r[eff])) + ylab("v (km/sec)")
+  if (PLOTS) {
+    for (i in seq_along(graphs)) {
+      x11()
+      plot(graphs[[i]])
+    }
+  }
 
   list(stanfit=stanfit, r_eff=r_eff, remax=remax, v_norm=v_norm, vlos_data=vlos_data, 
        v_sample=v_sample, x_pred=x_pred, y_pred=y_pred,
