@@ -180,22 +180,29 @@ model {
 }
 generated quantities {
   vector[N] v_rot;
-  vector[N_xy] v_res;
+  vector[N_xy] v_gp;
   vector[N_xy] v_pred;
+  vector[N_xy] v_model;
+  vector[N_xy] v_res;
   vector[N_r+1] vrot_pred;
   vector[N_r+1] vexp_pred;
   
   v_rot = fabs(r .* (P * c_r));
-  v_res = gp_pred_rng(xy_pred, v_los-v_sys-sin_i* (P * c_r) .* yhat, xyhat, alpha, rho, sigma_los);
-  v_pred = (v_res + sin_i * (poly(r_pred, order) * c_r) .* y_pred) *v_norm/sin_i;
-  v_res = v_res * v_norm/sin_i;
+  v_gp = gp_pred_rng(xy_pred, v_los-v_sys-sin_i* (P * c_r) .* yhat, xyhat, alpha, rho, sigma_los);
+  v_pred = (v_gp + sin_i * (poly(r_pred, order) * c_r) .* y_pred) *v_norm/sin_i;
   vrot_pred[1] = 0.;
   vexp_pred[1] = 0.;
   for (n in 1:N_r) {
     vrot_pred[n+1] = dot_product(v_pred[((n-1)*N_r+1):(n*N_r)], cos(theta_pred[((n-1)*N_r+1):(n*N_r)]));
     vexp_pred[n+1] = dot_product(v_pred[((n-1)*N_r+1):(n*N_r)], sin(theta_pred[((n-1)*N_r+1):(n*N_r)]));
   }
-  vrot_pred = fabs(vrot_pred * 2./N_r);
+  vrot_pred = vrot_pred * 2./N_r;
   vexp_pred = vexp_pred * 2./N_r;
+  for (n in 1:N_r) {
+    v_model[((n-1)*N_r+1):(n*N_r)] = vrot_pred[n+1] * cos(theta_pred[((n-1)*N_r+1):(n*N_r)]) +
+                                     vexp_pred[n+1] * sin(theta_pred[((n-1)*N_r+1):(n*N_r)]);
+  }
+  v_res = v_pred - v_model;
+  vrot_pred = fabs(vrot_pred);
 }
 
