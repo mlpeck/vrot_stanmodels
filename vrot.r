@@ -13,7 +13,7 @@ regrid <- function(lambda.out, lib) {
 }
 
 
-getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, ints=1e-4) {
+getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, searchinterval=1e-4) {
     dims <- dim(gdat$flux)
     nr <- dims[1]
     nc <- dims[2]
@@ -29,7 +29,7 @@ getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, ints=1e-4)
         deviance(lfit)
     }
     fn_v <- Vectorize(fn)
-    z_search <- seq(-dzlim, dzlim, by=ints)
+    z_search <- seq(-dzlim, dzlim, by=searchinterval)
 
     for (i in 1:nr) {
         for (j in 1:nc) {
@@ -39,8 +39,9 @@ getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, ints=1e-4)
             iv <- gdat$ivar[i, j, ]
 		    dev_grid <- fn_v(z_search)
 		    z0 <- z_search[which.min(dev_grid)]
-		    bestz <- Rsolnp::solnp(pars=z0, fun=fn, LB=z0-ints, UB=z0+ints, 
-                            control=list(trace=0))
+		    bestz <- Rsolnp::solnp(pars=z0, fun=fn, 
+                                           LB=z0-searchinterval, UB=z0+searchinterval, 
+                                           control=list(trace=0))
             dz[i,j] <- bestz$pars
             dz.err[i,j] <- 1/sqrt(bestz$hessian)
         }
