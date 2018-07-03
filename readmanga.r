@@ -49,9 +49,9 @@ readcube <- function(fname, drpcat=NULL) {
     iimg <- readFITS(fname, hdu=10)$imDat*elaw(7439.5,ebv)
     zimg <- readFITS(fname, hdu=11)$imDat*elaw(8897.1,ebv)
     if (!is.null(drpcat)) {
-        ind <- which(drpcat$mangaid == mangaid)
-        z <- (drpcat$nsa_z[ind])[1]
-        zdist <- (drpcat$nsa_zdist[ind])[1]
+        ind <- which(drpcat$plateifu == plateifu)
+        z <- drpcat$nsa_z[ind]
+        zdist <- drpcat$nsa_zdist[ind]
     } else {
         z <- zdist <- NA
     }
@@ -105,9 +105,9 @@ readrss <- function(fname, drpcat=NULL, ndither=3) {
     xpos <- matrix(xpos[neighbors], npos, ns)
     ypos <- matrix(ypos[neighbors], npos, ns)
     if (!is.null(drpcat)) {
-        ind <- which(drpcat$mangaid == mangaid)
-        z <- (drpcat$nsa_z[ind])[1]
-        zdist <- (drpcat$nsa_zdist[ind])[1]
+        ind <- which(drpcat$plateifu == plateifu)
+        z <- drpcat$nsa_z[ind]
+        zdist <- drpcat$nsa_zdist[ind]
     } else {
         z <- zdist <- NA
     }

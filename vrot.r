@@ -43,7 +43,7 @@ getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, searchinte
                                            LB=z0-searchinterval, UB=z0+searchinterval, 
                                            control=list(trace=0))
             dz[i,j] <- bestz$pars
-            dz.err[i,j] <- 1/sqrt(bestz$hessian)
+            dz.err[i,j] <- sqrt(2./bestz$hessian)
         }
     }
     list(dz=dz, dz.err=dz.err)
