@@ -14,39 +14,39 @@ regrid <- function(lambda.out, lib) {
 
 
 getdz <- function(gdat, lib, snrthresh=5, nlthresh=2000, dzlim=0.003, searchinterval=1e-4) {
-    dims <- dim(gdat$flux)
-    nr <- dims[1]
-    nc <- dims[2]
-    dz <- matrix(NA, nr, nc)
-    dz.err <- matrix(NA, nr, nc)
-    z <- gdat$meta$z
-    lambda <- gdat$lambda
-    fmla <- as.formula(paste("f ~", paste(names(lib)[-1], collapse="+")))
-    fn <- function(x) {
-        lambda.out <- lambda/(1+z+x)
-        lib.out <- regrid(lambda.out, lib)
-        lfit <- lm(fmla, data=lib.out, weights=iv)
-        deviance(lfit)
+  dims <- dim(gdat$flux)
+  nr <- dims[1]
+  nc <- dims[2]
+  dz <- matrix(NA, nr, nc)
+  dz.err <- matrix(NA, nr, nc)
+  z <- gdat$meta$z
+  lambda <- gdat$lambda
+  fmla <- as.formula(paste("f ~", paste(names(lib)[-1], collapse="+")))
+  fn <- function(x) {
+    lambda.out <- lambda/(1+z+x)
+    lib.out <- regrid(lambda.out, lib)
+    lfit <- lm(fmla, data=lib.out, weights=iv)
+    deviance(lfit)
+  }
+  fn_v <- Vectorize(fn)
+  z_search <- seq(-dzlim, dzlim, by=searchinterval)
+  
+  for (i in 1:nr) {
+    for (j in 1:nc) {
+      if (is.na(gdat$snr[i,j]) || gdat$snr[i,j]<=snrthresh) next
+        f <- gdat$flux[i, j, ]
+        if (length(which(!is.na(f))) < nlthresh) next
+          iv <- gdat$ivar[i, j, ]
+          dev_grid <- fn_v(z_search)
+          z0 <- z_search[which.min(dev_grid)]
+          bestz <- Rsolnp::solnp(pars=z0, fun=fn, 
+                                 LB=z0-searchinterval, UB=z0+searchinterval, 
+                                 control=list(trace=0))
+          dz[i,j] <- bestz$pars
+          dz.err[i,j] <- sqrt(2./bestz$hessian)
     }
-    fn_v <- Vectorize(fn)
-    z_search <- seq(-dzlim, dzlim, by=searchinterval)
-
-    for (i in 1:nr) {
-        for (j in 1:nc) {
-            if (is.na(gdat$snr[i,j]) || gdat$snr[i,j]<=snrthresh) next
-            f <- gdat$flux[i, j, ]
-            if (length(which(!is.na(f))) < nlthresh) next
-            iv <- gdat$ivar[i, j, ]
-		    dev_grid <- fn_v(z_search)
-		    z0 <- z_search[which.min(dev_grid)]
-		    bestz <- Rsolnp::solnp(pars=z0, fun=fn, 
-                                           LB=z0-searchinterval, UB=z0+searchinterval, 
-                                           control=list(trace=0))
-            dz[i,j] <- bestz$pars
-            dz.err[i,j] <- sqrt(2./bestz$hessian)
-        }
-    }
-    list(dz=dz, dz.err=dz.err)
+  }
+  list(dz=dz, dz.err=dz.err)
 }
 
 ## peculiar velocity
@@ -61,7 +61,8 @@ fillpoly <- function(ra, dec, zvals, dxy=0.5) {
     ny <- max(round((max(dec)-min(dec))*3600/dxy), 100)
     nx <- ny
     allok <- complete.cases(ra, dec, zvals)
-    zsurf <- akima::interp(x=ra[allok], y=dec[allok], z=zvals[allok], nx=nx, ny=ny)
+    zsurf <- akima::interp(x=ra[allok], y=dec[allok], z=zvals[allok], 
+                           linear=FALSE, nx=nx, ny=ny)
     list(ra=zsurf$x, dec=zsurf$y, z=zsurf$z)
 }
 
@@ -119,7 +120,8 @@ vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
                       sd.kc0=0.5,
                       order=3, N_r=100,
                       r_eff=1, remax=1.5, v_norm=100, PLOTS=TRUE,
-                      stanmodel="vrot.stan", stanmodeldir=".", 
+                      smodel=NULL,
+                      stanfile="vrot.stan", stanfiledir=".", 
                       seed=220755, iter=2000, warmup=1000,
                       chains=4, cores=4,
                       control=list(adapt_delta=0.975, max_treedepth=15)) {
@@ -149,8 +151,13 @@ vrot <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
     si <- sqrt(1-ci.guess^2)
     list(phi=p, si=si, x_c=0., y_c=0., v_sys=0.)
   }
-  stanfit <- stan(file=file.path(stanmodeldir, stanmodel), data=vlos_data, init=inits, 
+  if (!is.null(smodel)) {
+    stanfit <- sampling(smodel, data=vlos_data, init=inits, seed=seed,
+                        iter=iter, warmup=warmup, control=control, chains=chains, cores=cores)
+  } else {
+    stanfit <- stan(file=file.path(stanfiledir, stanfile), data=vlos_data, init=inits, 
                   seed=seed, iter=iter, warmup=warmup, control=control, chains=chains, cores=cores)
+  }
   post <- extract(stanfit)
   vf_obs <- fillpoly(gdat.stack$ra.f, gdat.stack$dec.f, v)
   v_model <- rep(NA, length(v))
@@ -235,7 +242,8 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
                       sd.kc0=0.5,
                       order=3, N_xy=25^2,
                       r_eff=1, remax=1.5, v_norm=100, PLOTS=TRUE,
-                      stanmodel="vrot_gp.stan", stanmodeldir=".", 
+                      smodel=NULL,
+                      stanfile="vrot_gp.stan", stanfiledir=".", 
                       seed=220755, iter=500, warmup=250,
                       chains=4, cores=4,
                       control=list(adapt_delta=0.8, max_treedepth=10)) {
@@ -246,7 +254,8 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   v_sample <- v[!is.na(v)]
   dv <- (dz.stack$dz.err/dz.stack$dz)*v
   df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v, dv=dv)
-  df <- df[complete.cases(df),]
+  allok <- complete.cases(df)
+  df <- df[allok,]
   
   n_r <- round(sqrt(N_xy))
   N_xy <- n_r^2
@@ -272,16 +281,33 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
     ci <- ci.guess
     list(phi=p, cos_i=ci, x_c=0., y_c=0., v_sys=0.)
   }
-  stanfit <- stan(file=file.path(stanmodeldir, stanmodel), data=vlos_data, init=inits, 
+  if (!is.null(smodel)) {
+    stanfit <- sampling(smodel, data=vlos_data, init=inits, seed=seed,
+                        iter=iter, warmup=warmup, control=control, chains=chains, cores=cores)
+  } else {
+    stanfit <- stan(file=file.path(stanfiledir, stanfile), data=vlos_data, init=inits, 
                   seed=seed, iter=iter, warmup=warmup, control=control, chains=chains, cores=cores)
+  }
   post <- extract(stanfit)
   graphs <- list()
-  df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v)
+  vf_model <- rep(NA, length(gdat.stack$xpos))
+  vf_res <- rep(NA, length(gdat.stack$ypos))
+  vf_model[allok] <- colMeans(post$vf_model)*v_norm
+  vf_res[allok] <- colMeans(post$vf_res)*v_norm
+  df <- data.frame(x=gdat.stack$xpos, y=gdat.stack$ypos, v=v, vf_model=vf_model, vf_res=vf_res)
   g <- 1
   graphs[[g]] <- ggplot(df) + geom_point(aes(x=x, y=y, color=v), size=7) +
-                              scale_colour_gradientn(colors=c("blue","cyan","green","yellow","red"), na.value="gray95") +
+                              scale_colour_gradientn(colors=rainbow, na.value="gray95") +
                               coord_fixed(ratio=1) +
                               ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": observed fiber velocities"))
+  g <- g+1
+  df <- df[allok,]
+  df1 <- akima::interp(x=df$x, y=df$y, z=df$vf_model, nx=200, ny=200)
+  graphs[[g]] <- ggimage(df1$z, df1$x, df1$y, col=rainbow, xlab="x", ylab="y", legend="vf_model", addContour=TRUE)
+  g <- g+1
+  df1 <- akima::interp(x=df$x, y=df$y, z=df$vf_res, nx=200, ny=200)
+  graphs[[g]] <- ggimage(df1$z, df1$x, df1$y, xlab="x", ylab="y", legend="vf_res", addContour=TRUE)
+  
   v_pred <- colMeans(post$v_pred)
   sd_v_pred <- apply(post$v_pred, 2, sd)
   v_model <- colMeans(post$v_model)
@@ -291,10 +317,10 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   rho <- c(0, rho)*remax
   df <- akima::interp(x=x, y=y, z=v_pred, nx=200, ny=200)
   g <- g+1
-  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rev(rygcb(400)), xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rainbow, xlab="x", ylab="y", legend="v_pred", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=v_model, nx=200, ny=200)
   g <- g+1
-  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rev(rygcb(400)), xlab="x", ylab="y", legend="v_model", addContour=TRUE)
+  graphs[[g]] <- ggimage(df$z, df$x, df$y, col=rainbow, xlab="x", ylab="y", legend="v_model", addContour=TRUE)
   df <- akima::interp(x=x, y=y, z=v_res, nx=200, ny=200)
   g <- g+1
   graphs[[g]] <- ggimage(df$z, df$x, df$y, xlab="x", ylab="y", legend="v_res", addContour=TRUE)
@@ -325,7 +351,6 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
   graphs[[g]] <- ggplot(df_v) + geom_point(aes(x=r_50., y=v_rot_50.)) +
           geom_errorbar(aes(x=r_50., ymin=v_rot_2.5., ymax=v_rot_97.5.)) +
           geom_errorbarh(aes(x=r_50., y=v_rot_50., xmin=r_2.5., xmax=r_97.5.)) +
-          stat_density_2d(aes(x=r, y=v_rot, fill=..level..), data=df, geom="polygon", alpha=0.5, show.legend=FALSE) + 
           ggtitle(paste("mangaid", gdat.stack$meta$mangaid, ": joint distribution of r, v_rot")) +
           xlab(expression(r/r[eff])) + ylab("v (km/sec)")
   if (PLOTS) {

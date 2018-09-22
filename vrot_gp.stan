@@ -1,15 +1,4 @@
 functions {
-  matrix poly(vector r, int order) {
-    int N = num_elements(r);
-    matrix[N, order] P;
-    for (i in 1:order) {
-      for (n in 1:N) {
-        P[n, i] = r[n]^(i-1);
-      }
-    }
-    return P;
-  }
-
   vector gp_pred_rng(row_vector[] xy_pred,
                      vector v_obs,
                      row_vector[] xy_obs,
@@ -61,7 +50,6 @@ functions {
 }
 
 data {
-  int<lower=1> order; //order for polynomial representation
   int<lower=1> N;
   vector[N] x;
   vector[N] y;
@@ -114,8 +102,8 @@ parameters {
   real x_c;  //kinematic centers
   real y_c;
   real v_sys;     //system velocity offset (should be small)
-  vector[order] c_r;
-  vector[N] v_los;  //latent "real" los velocity
+  real v_c;
+  real<lower=0> r_t;
   real<lower=0.> sigma_los;
   real<lower=0.> alpha;
   real<lower=0.> rho;
@@ -135,7 +123,6 @@ transformed parameters {
   vector[N] xhat;
   vector[N] yhat;
   row_vector[2] xyhat[N];
-  matrix[N, order] P;
   
   X = append_col(xc, yc);
   Rot = [ [-cos_phi, -sin_phi],
@@ -145,7 +132,6 @@ transformed parameters {
   xhat = Xhat[ : , 1];
   yhat = Xhat[ : , 2];
   r = sqrt(xhat .* xhat + yhat .* yhat);
-  P = poly(r, order);
   
   xyhat[:, 1] = to_array_1d(xhat);
   xyhat[:, 2] = to_array_1d(yhat);
@@ -162,24 +148,26 @@ model {
   x_c ~ normal(0, sd_kc0/r_norm);
   y_c ~ normal(0, sd_kc0/r_norm);
   v_sys ~ normal(0, 150./v_norm);
-  c_r ~ normal(0, 1000./v_norm);
-  sigma_los ~ normal(0, 50./v_norm);
+  v_c ~ normal(0, 150./v_norm);
+  r_t ~ normal(0, 1.);
+  sigma_los ~ normal(0, 150./v_norm);
   alpha ~ normal(0, 150./v_norm);
   rho ~ inv_gamma(a, b);
   
   // likelihood
   
-  v ~ normal(v_los, dv);
-  
   cov = cov_exp_quad(xyhat, alpha, rho);
   for (n in 1:N) {
-    cov[n, n] = cov[n, n] + square(sigma_los);
+    cov[n, n] = cov[n, n] + square(sigma_los) + dv[n]^2;
   }
   L_cov = cholesky_decompose(cov);
-  v_los ~ multi_normal_cholesky(v_sys + sin_i * (P * c_r) .* yhat, L_cov);
+  v ~ multi_normal_cholesky(v_sys + sin_i * (2./pi() * v_c * atan(r/r_t) .* yhat ./ r), L_cov);
 }
 generated quantities {
   vector[N] v_rot;
+  vector[N] vf_model;
+  vector[N] vf_res;
+  
   vector[N_xy] v_gp;
   vector[N_xy] v_pred;
   vector[N_xy] v_model;
@@ -187,9 +175,17 @@ generated quantities {
   vector[N_r+1] vrot_pred;
   vector[N_r+1] vexp_pred;
   
-  v_rot = fabs(r .* (P * c_r));
-  v_gp = gp_pred_rng(xy_pred, v_los-v_sys-sin_i* (P * c_r) .* yhat, xyhat, alpha, rho, sigma_los);
-  v_pred = (v_gp + sin_i * (poly(r_pred, order) * c_r) .* y_pred) *v_norm/sin_i;
+  // model and residuals at the original points
+  
+  v_rot = 2./pi() * v_c * atan(r/r_t);
+  vf_model = gp_pred_rng(xyhat, v-v_sys-sin_i * (v_rot .* yhat ./ r), xyhat, alpha, rho, sigma_los);
+  vf_model = vf_model + v_sys + sin_i * (v_rot .* yhat ./r);
+  vf_res = v - vf_model;
+  
+  // model in rings
+  
+  v_gp = gp_pred_rng(xy_pred, v-v_sys-sin_i * (v_rot .* yhat ./ r), xyhat, alpha, rho, sigma_los);
+  v_pred = (v_gp + sin_i * 2./pi() * v_c * atan(r_pred/r_t) .* y_pred ./ r_pred) *v_norm/sin_i;
   vrot_pred[1] = 0.;
   vexp_pred[1] = 0.;
   for (n in 1:N_r) {
@@ -204,5 +200,6 @@ generated quantities {
   }
   v_res = v_pred - v_model;
   vrot_pred = fabs(vrot_pred);
+  v_rot = fabs(v_rot);
 }
 
