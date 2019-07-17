@@ -243,11 +243,12 @@ vrot_gp <- function(gdat.stack, dz.stack, phi.guess, sd.phi.guess=10,
                       order=3, N_xy=25^2,
                       r_eff=1, remax=1.5, v_norm=100, PLOTS=TRUE,
                       smodel=NULL,
-                      stanfile="vrot_gp.stan", stanfiledir=".", 
-                      seed=220755, iter=500, warmup=250,
+                      stanfile="vrot_gp.stan", stanfiledir="~/vrot_stanmodels", 
+                      seed=220755, iter=1000, warmup=500,
                       chains=4, cores=4,
-                      control=list(adapt_delta=0.8, max_treedepth=10)) {
+                      control=list(adapt_delta=0.9, max_treedepth=10)) {
   require(rstan)
+  require(spmutils)
   require(ggplot2)
   require(akima)
   v <- vrel(dz.stack$dz+gdat.stack$meta$z, gdat.stack$meta$z)

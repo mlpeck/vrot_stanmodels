@@ -148,7 +148,7 @@ model {
   x_c ~ normal(0, sd_kc0/r_norm);
   y_c ~ normal(0, sd_kc0/r_norm);
   v_sys ~ normal(0, 150./v_norm);
-  v_c ~ normal(0, 150./v_norm);
+  v_c ~ normal(0, 1500./v_norm);
   r_t ~ normal(0, 1.);
   sigma_los ~ normal(0, 150./v_norm);
   alpha ~ normal(0, 150./v_norm);
